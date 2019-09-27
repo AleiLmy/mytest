@@ -6,13 +6,12 @@ ___
 #### 从代数的角度来说
 * **Communication：**是一种特殊的Event，用二元组c.v表示，c是channel的名字，v是传递过来的message的值
 * process P可以写入和读取channel的messge集合表示为：
-<img src="/Users/lei/Library/Application Support/typora-user-images/image-20190927100840259.png" alt="image-20190927100840259" style="zoom: 50%;" />
+<img src="../doc/img/1.png" alt="avatar" style="zoom: 50%;" />
 * P从c读取和写入分别定义为：
-
 * output:
-<img src="/Users/lei/Library/Application Support/typora-user-images/image-20190927100929064.png" alt="image-20190927100929064" style="zoom:50%;" />
+<img src="../doc/img/2.png" alt="image-20190927100929064" style="zoom:50%;" />
 * input:
-<img src="/Users/lei/Library/Application Support/typora-user-images/image-20190927100944785.png" alt="image-20190927100944785" style="zoom:67%;" />
+![avatar](../doc/img/3.png)
 * **Sequential Process：**为了区分process是STOP(不再响应事件，有可能是死锁)还是terminate successfully，引入符号“√”，表示正常终结，而Sequential Process就是表示正常终结的process们。
 * 你们眼里的并发模型，应该是指Communication和Sequential Process部分，它们只是CSP代数系统的special case, 或者说是具体特化场景
 
@@ -76,7 +75,7 @@ type waitq struct {
 }
 ```
 * 例如，*创建一个容量为 6 的，元素为 int 型的 channel 数据结构如下 ：*
-<img src="/Users/lei/Library/Application Support/typora-user-images/image-20190927101010167.png" alt="image-20190927101010167" style="zoom: 50%;" />
+<img src="../doc/img/4.png" alt="image-20190927101010167" style="zoom: 50%;" />
 
 
 #### 初始化channel
@@ -144,7 +143,7 @@ func makechan(t *chantype, size int) *hchan {
 ```
 
 ##### 逻辑流程图
-<img src="/Users/lei/Library/Application Support/typora-user-images/image-20190927101046343.png" alt="image-20190927101046343" style="zoom:67%;" />
+<img src="../doc/img/5.png" alt="image-20190927101046343" style="zoom:67%;" />
 
 
 #### 接收数据
