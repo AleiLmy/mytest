@@ -4,14 +4,14 @@ ___
 * 在文章中，CSP 也是一门自定义的编程语言，作者定义了输入输出语句，用于 processes 间的通信（communicatiton）。processes 被认为是需要输入驱动，并且产生输出，供其他 processes 消费，processes 可以是进程、线程、甚至是代码块。输入命令是：!，用来向 processes 写入；输出是：?，用来从 processes 读出
 
 #### 从代数的角度来说
-* **Communication：**是一种特殊的Event，用二元组c.v表示，c是channel的名字，v是传递过来的message的值
+* **Communication**：是一种特殊的Event，用二元组c.v表示，c是channel的名字，v是传递过来的message的值
 * process P可以写入和读取channel的messge集合表示为：
 <img src="../doc/img/1.png" alt="avatar" style="zoom: 50%;" />
 * P从c读取和写入分别定义为：
 * output:
-<img src="../doc/img/2.png" alt="image-20190927100929064" style="zoom:50%;" />
+<img src="../doc/img/2.png" alt="avatar" style="zoom:50%;" />
 * input:
-![avatar](../doc/img/3.png)
+<img src="../doc/img/3.png" alt="avatar" style="zoom:50%;" />
 * **Sequential Process：**为了区分process是STOP(不再响应事件，有可能是死锁)还是terminate successfully，引入符号“√”，表示正常终结，而Sequential Process就是表示正常终结的process们。
 * 你们眼里的并发模型，应该是指Communication和Sequential Process部分，它们只是CSP代数系统的special case, 或者说是具体特化场景
 
