@@ -1,7 +1,8 @@
-#Channel 介绍
+# Channel 介绍
+
 _____
 
-##什么是CSP
+## 什么是CSP
 
 * CSP 经常被认为是 Go 在并发编程上成功的关键因素。CSP 全称是 “Communicating Sequential Processes”，这也是 Tony Hoare 在 1978 年发表在 ACM 的一篇论文。论文里指出一门编程语言应该重视 input 和 output 的原语，尤其是并发编程的代码。[官方教材](http://www.usingcsp.com/cspbook.pdf)
 ___
