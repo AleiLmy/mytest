@@ -5,14 +5,20 @@ ___
 
 #### 从代数的角度来说
 * **Communication**：是一种特殊的Event，用二元组c.v表示，c是channel的名字，v是传递过来的message的值
+
 * process P可以写入和读取channel的messge集合表示为：
-<img src="../doc/img/1.png" alt="avatar" style="zoom: 50%;" />
+  <img src="../doc/img/1.png" alt="avatar" style="zoom: 50%;" />
+
 * P从c读取和写入分别定义为：
+
 * output:
-<img src="../doc/img/2.png" alt="avatar" style="zoom:50%;" />
+  <img src="../doc/img/2.png" alt="avatar" style="zoom:50%;" />
+
 * input:
-<img src="../doc/img/3.png" alt="avatar" style="zoom:50%;" />
-* **Sequential Process：**为了区分process是STOP(不再响应事件，有可能是死锁)还是terminate successfully，引入符号“√”，表示正常终结，而Sequential Process就是表示正常终结的process们。
+  <img src="../doc/img/3.png" alt="avatar" style="zoom:50%;" />
+
+* **Sequential Process：**为了区分process是STOP(不再响应事件，有可能是死锁)还是terminate successfully，引入符号“√”，表示正常终结，而Sequential Process就是表示正常终结的process们。    
+
 * 你们眼里的并发模型，应该是指Communication和Sequential Process部分，它们只是CSP代数系统的special case, 或者说是具体特化场景
 
 #### 从程序员的角度来说
