@@ -17,6 +17,7 @@ ___
 * P从c读取和写入分别定义为：
 
 * output:
+
   <img src="../doc/img/2.png" alt="avatar" style="zoom:50%;" />
 
 * input:
