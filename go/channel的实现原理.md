@@ -17,6 +17,8 @@ ___
 * input:
   <img src="../doc/img/3.png" alt="avatar" style="zoom:50%;" />
 
+
+
 * **Sequential Process：**为了区分process是STOP(不再响应事件，有可能是死锁)还是terminate successfully，引入符号“√”，表示正常终结，而Sequential Process就是表示正常终结的process们。
 
 
