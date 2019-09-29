@@ -617,8 +617,155 @@ ____
   ![avatar](../doc/img/11.jpg)
 
 #### 关闭
+
 ##### 当关闭某个channel，会执行函数closechan
+
 ###### closechan源码
 ```go
+func closechan(c *hchan) {
+	// 如果chan为空，直接panic
+	if c == nil {
+		panic(plainError("close of nil channel"))
+	}
+
+	lock(&c.lock)
+	if c.closed != 0 {
+		// 如果 channel 已经关闭
+		unlock(&c.lock)
+		panic(plainError("close of closed channel"))
+	}
+
+	if raceenabled {
+		callerpc := getcallerpc()
+		racewritepc(c.raceaddr(), callerpc, funcPC(closechan))
+		racerelease(c.raceaddr())
+	}
+
+	// 修改关闭状态
+	c.closed = 1
+
+	var glist gList
+
+	// 将channel所有等待接收队列的里sudog释放
+	for {
+		// 从接收队列里出队一个 sudog
+		sg := c.recvq.dequeue()
+		// 完成跳出
+		if sg == nil {
+			break
+		}
+		// 如果elem不为空，说明此receiver未忽略接收数据 
+		// 给它赋一个相应类型的零值
+		if sg.elem != nil {
+			typedmemclr(c.elemtype, sg.elem)
+			sg.elem = nil
+		}
+		if sg.releasetime != 0 {
+			sg.releasetime = cputicks()
+		}
+		// 取出 goroutine
+		gp := sg.g
+		gp.param = nil
+		if raceenabled {
+			raceacquireg(gp, c.raceaddr())
+		}
+		// push到go的队列里面
+		glist.push(gp)
+	}
+
+	// 将channel等待发送队列里的sudog释放
+	// 如果存在，这些goroutine将会panic
+	for {
+		sg := c.sendq.dequeue()
+		if sg == nil {
+			break
+		}
+		sg.elem = nil
+		if sg.releasetime != 0 {
+			sg.releasetime = cputicks()
+		}
+		gp := sg.g
+		gp.param = nil
+		if raceenabled {
+			raceacquireg(gp, c.raceaddr())
+		}
+		glist.push(gp)
+	}
+	unlock(&c.lock)
+
+	// Ready all Gs now that we've dropped the channel lock.
+	for !glist.empty() {
+		gp := glist.pop()
+		gp.schedlink = 0
+		goready(gp, 3)
+	}
+}
 ```
-## Channel进阶
+* close 逻辑比较简单，对于一个 channel，recvq 和 sendq 中分别保存了阻塞的发送者和接收者。关闭 channel 后，对于等待接收者而言，会收到一个相应类型的零值。对于等待发送者，会直接 panic。所以，在不了解 channel 还有没有接收者的情况下，不能贸然关闭 channel。
+
+* 关闭chan会加一把大锁，将所有的sender和reciver都加的队列李阿敏，循环处理。
+
+* 唤醒之后，该干嘛干嘛。sender 会继续执行 chansend 函数里 goparkunlock 函数之后的代码，很不幸，检测到 channel 已经关闭了，panic。receiver 则比较幸运，进行一些扫尾工作后，返回。
+
+### channel的操作结果
+* 总结一下操作 channel 的结果：
+
+    ![avatar](../doc/img/12.jpg)
+
+    **注意点：**
+
+    1. 总结一下，发生 panic 的情况有三种：向一个关闭的 channel 进行写操作；关闭一个 nil 的 channel；重复关闭一个 channel。
+    2. 读、写一个 nil channel 都会被阻塞。
+
+##Channel进阶
+
+### 发送和接收元素的本质
+
+* Channel 发送和接收元素的本质是什么？就是说 channel 的发送和接收操作本质上都是 “值的拷贝”，无论是从 sender goroutine 的栈到 chan buf，还是从 chan buf 到 receiver goroutine，或者是直接从 sender goroutine 到 receiver goroutine。
+#### Demo:
+```go
+type user struct {
+	name string
+	age int8
+}
+
+var u = user{name: "Ankur", age: 25}
+var g = &u
+
+func modifyUser(pu *user) {
+	fmt.Println("modifyUser Received Vaule", pu)
+	pu.name = "Anand"
+}
+
+func printUser(u <-chan *user) {
+	time.Sleep(2 * time.Second)
+	fmt.Println("printUser goRoutine called", <-u)
+}
+
+func main() {
+	c := make(chan *user, 5)
+	c <- g
+	fmt.Println(g)
+	// modify g
+	g = &user{name: "Ankur Anand", age: 100}
+	go printUser(c)
+	go modifyUser(g)
+	time.Sleep(5 * time.Second)
+	fmt.Println(g)
+}
+```
+#### 运行结果
+```shell
+&{Ankur 25}
+modifyUser Received Vaule &{Ankur Anand 100}
+printUser goRoutine called &{Ankur 25}
+&{Anand 100}
+```
+
+* 这里就是一个很好的 `share memory by communicating` 的例子:
+
+    ![avatar](../doc/img/13.jpg)
+
+1. 一开始构造一个结构体 u，地址是 0x56420，图中地址上方就是它的内容。接着把 `&u`赋值给指针`g`，g 的地址是 0x565bb0，它的内容就是一个地址，指向 u。
+2. main 程序里，先把 g 发送到 c，根据 `copy value`的本质，进入到 chan buf 里的就是 `0x56420`，它是指针 g 的值（不是它指向的内容），所以打印从 channel 接收到的元素时，它就是 `&{Ankur 25}`。因此，这里并不是将指针 g “发送” 到了 channel 里，只是拷贝它的值而已。
+### 资源泄漏
