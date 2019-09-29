@@ -383,7 +383,7 @@ func main() {
 
 ![avatar](../doc/img/6.jpg)
 
-* 可以看到recvq 里挂了两个 goroutine，也就是前面启动的 G1 和 G2。因为没有 goroutine 接收，而 channel 又是无缓冲类型，所以 G1 和 G2 被阻塞。
+* 可以看到recvq 里挂了两个 goroutine，也就是前面启动的 G1 和 G2。因为没有 goroutine 接收，而 channel 又是无缓冲类型，所以 1 和 G2 被阻塞。
 
 * G1 和 G2 被挂起了，状态是 `WAITING`，一个内核线程可以管理多个 goroutine，当其中一个 goroutine 阻塞时，内核线程可以调度其他的 goroutine 来运行，内核线程本身不会阻塞。这就是通常我们说的 `M:N` 模型，`M:N`模型通常由三部分构成：M、P、G。M 是内核线程，负责运行 goroutine；P 是 context，保存 goroutine 运行所需要的上下文，它还维护了可运行（runnable）的 goroutine 列表；G 则是待运行的 goroutine。M 和 P 是 G 运行的基础。
 
@@ -398,3 +398,227 @@ func main() {
 <img src="../doc/img/9.jpg" alt="avatar" style="zoom:67%;" />
 
 ​			3. G2 也是同样的遭遇。现在 G1 和 G2 都被挂起了，等待着一个 sender 往 channel 里发送数据，才能得到解救。
+
+
+
+#### 发送数据
+
+##### 在发送一个数据后，会调用系统的**chansend**函数
+###### 源码：(src/runtime/chan.go)
+``` go
+func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
+	if c == nil {
+		// 非阻塞，直接返回F，未发送成功
+		if !block {
+			return false
+		}
+		//挂起当前go
+		gopark(nil, nil, waitReasonChanSendNilChan, traceEvGoStop, 2)
+		throw("unreachable")
+	}
+	//debug 日志
+	if debugChan {
+		print("chansend: chan=", c, "\n")
+	}
+
+	if raceenabled {
+		racereadpc(c.raceaddr(), callerpc, funcPC(chansend))
+	}
+
+	// 非阻塞下
+	// 如果 channel 未关闭且 channel 没有多余的缓冲空间。这可能是：
+	// 1. channel 是非缓冲型的，且等待接收队列里没有 goroutine
+	// 2. channel 是缓冲型的，但循环数组已经装满了元素
+	// 直接返回F
+	if !block && c.closed == 0 && ((c.dataqsiz == 0 && c.recvq.first == nil) ||
+		(c.dataqsiz > 0 && c.qcount == c.dataqsiz)) {
+		return false
+	}
+
+	var t0 int64
+	if blockprofilerate > 0 {
+		t0 = cputicks()
+	}
+
+	lock(&c.lock)
+
+	// chan已经关闭，写数据panic
+	if c.closed != 0 {
+		unlock(&c.lock)
+		panic(plainError("send on closed channel"))
+	}
+
+	// 接收的队列里面有go在等待，直接拷贝发送的数据到等待的go上面
+	if sg := c.recvq.dequeue(); sg != nil {
+		send(c, sg, ep, func() { unlock(&c.lock) }, 3)
+		return true
+	}
+
+	// 如果缓冲型 buf没有满，
+	if c.qcount < c.dataqsiz {
+		// qp指向了buf发送的 sendx位置
+		qp := chanbuf(c, c.sendx)
+		if raceenabled {
+			raceacquire(qp)
+			racerelease(qp)
+		}
+		// 数据从ep 拷贝到qp上
+		typedmemmove(c.elemtype, qp, ep)
+		c.sendx++
+		if c.sendx == c.dataqsiz {
+			c.sendx = 0
+		}
+		c.qcount++
+		unlock(&c.lock)
+		return true
+	}
+
+	// 如果不需要阻塞，则直接返回
+	if !block {
+		unlock(&c.lock)
+		return false
+	}
+
+	// channel 满了，发送方会被阻塞。接下来会构造一个 sudog
+	// 获取当前 goroutine 的指针
+	gp := getg()
+	mysg := acquireSudog()
+	mysg.releasetime = 0
+	if t0 != 0 {
+		mysg.releasetime = -1
+	}
+	// No stack splits between assigning elem and enqueuing mysg
+	// on gp.waiting where copystack can find it.
+	mysg.elem = ep
+	mysg.waitlink = nil
+	mysg.g = gp
+	mysg.isSelect = false
+	mysg.c = c
+	gp.waiting = mysg
+	gp.param = nil
+	// 当前 goroutine 进入发送等待队列
+	c.sendq.enqueue(mysg)
+	// 当前 goroutine 被挂起
+	goparkunlock(&c.lock, waitReasonChanSend, traceEvGoBlockSend, 3)
+	// Ensure the value being sent is kept alive until the
+	// receiver copies it out. The sudog has a pointer to the
+	// stack object, but sudogs aren't considered as roots of the
+	// stack tracer.
+	KeepAlive(ep)
+
+	// // 从这里开始被唤醒了（channel 有机会可以发送了）
+	if mysg != gp.waiting {
+		throw("G waiting list is corrupted")
+	}
+	gp.waiting = nil
+	if gp.param == nil {
+		if c.closed == 0 {
+			throw("chansend: spurious wakeup")
+		}
+		// 被唤醒后，channel 关闭了 panic
+		panic(plainError("send on closed channel"))
+	}
+	gp.param = nil
+	if mysg.releasetime > 0 {
+		blockevent(mysg.releasetime-t0, 2)
+	}
+	mysg.c = nil
+	releaseSudog(mysg)
+	return true
+}
+```
+
+* 总结一下
+
+  1. 如果检测到channel是空的，当前的goroutine会被挂起
+
+  2. 对于非阻塞的发送，如果chan未关闭并且没有多余的 buf，可以快速的判断是否发送失败
+
+  3. 对于阻塞的情况，如果chan关闭了，直接panic
+
+  4. 如果接收等待的recvq有go在等待，直接取出来一个，进行语速的栈拷贝进行操作，调用send函数
+
+###### send 函数
+```go
+// send 函数处理向一个空的 channel 发送操作
+// ep 指向被发送的元素，会被直接拷贝到接收的goroutine之后，接收的goroutine会被唤醒
+// c 必须是空的没有数据（因为等待队列里有goroutine，肯定是空的）
+// c 必须被上锁，发送操作执行完后,会使用unlockf函数解锁
+// sg 必须已经从等待队列里取出来了
+// ep 必须是非空，并且它指向堆或调用者的栈
+func send(c *hchan, sg *sudog, ep unsafe.Pointer, unlockf func(), skip int) {
+	// race 相关的暂时不用
+	if raceenabled {
+		if c.dataqsiz == 0 {
+			racesync(c, sg)
+		} else {
+			// Pretend we go through the buffer, even though
+			// we copy directly. Note that we need to increment
+			// the head/tail locations only when raceenabled.
+			qp := chanbuf(c, c.recvx)
+			raceacquire(qp)
+			racerelease(qp)
+			raceacquireg(sg.g, qp)
+			racereleaseg(sg.g, qp)
+			c.recvx++
+			if c.recvx == c.dataqsiz {
+				c.recvx = 0
+			}
+			c.sendx = c.recvx // c.sendx = (c.sendx+1) % c.dataqsiz
+		}
+	}
+	// sg.elem指向接收到的值存放的位置，如val<-ch，指的就是&val
+	if sg.elem != nil {
+		sendDirect(c.elemtype, sg, ep)
+		sg.elem = nil
+	}
+	gp := sg.g
+	unlockf()
+	gp.param = unsafe.Pointer(sg)
+	if sg.releasetime != 0 {
+		sg.releasetime = cputicks()
+	}
+	// 唤醒接收的goroutine,skip和打印栈相关暂时不理会
+	goready(gp, skip+1)
+}
+```
+###### sendDirect函数
+```go
+// 向一个非缓冲型的 channel 发送数据、从一个无元素的（非缓冲型或缓冲型但空）的 channel
+// 接收数据，都会导致一个 goroutine 直接操作另一个 goroutine 的栈
+// 由于 GC 假设对栈的写操作只能发生在 goroutine 正在运行中并且由当前 goroutine 来写
+// 所以这里实际上违反了这个假设。可能会造成一些问题，所以需要用到写屏障来规避
+func sendDirect(t *_type, sg *sudog, src unsafe.Pointer) {
+	// src 在当前 goroutine 的栈上，dst 是另一个 goroutine 的栈
+	// 直接进行内存"搬迁"
+	// 如果目标地址的栈发生了栈收缩，当我们读出了 sg.elem 后
+	// 就不能修改真正的 dst 位置的值了
+	// 因此需要在读和写之前加上一个屏障
+	dst := sg.elem
+	typeBitsBulkBarrier(t, uintptr(dst), uintptr(src), t.size)
+	// No need for cgo write barrier checks because dst is always
+	// Go memory.
+	memmove(dst, src, t.size)
+}
+```
+
+* 总结：
+  1. 调用send函数，涉及到一个go直接写另一个go栈的操作，一般而言，不通的go的栈是各自独有的。这种操作也违法了GC的一些假设，为了保证不出问题，增加了写屏障(*在目标的栈缩容时，找不到目标*)。好处是减少了一次内存copy，不用先拷贝到channel的buf，直接由发送者到接收者，提升效率。
+  2. 继续后续流程，如果有缓冲区，且缓冲区没有满，直接通过函数取出待发送元素该去的位置，拷贝数据，返回
+  3. 如果channel满了，将go挂起，具体是构造一个sudog，将其入队，调用**goparkunlock**挂起，等待合适的机会在唤醒。
+  4. 唤醒之后会从**goparkunlock**下一行代码开始执行，通过一些绑定操作，sudog通过g绑定goroutine，goroutine通过waiting绑定sudog，sudog通过elem字段绑定待发送元素的地址，以及c字段绑定此处的channel。所以，待发送的元素地址其实是存储在sudog的结构体里，也就是当前的goroutine。    
+____
+* 在第17行执行ch <- 3，协程向ch发送了一个元素3。sender 发现 ch 的 recvq 里有 receiver 在等待着接收，就会出队一个 sudog，把 recvq 里 first 指针的 sudo “推举”出来了，并将其加入到 P 的可运行 goroutine 队列中。然后，sender 把发送元素拷贝到 sudog 的 elem 地址处，最后会调用 goready 将 G1 唤醒，状态变为 runnable。
+
+![avatar](../doc/img/10.jpg)
+
+* 当调度器光顾 G1 时，将 G1 变成 running 状态，执行 goroutineA 接下来的代码。G 表示其他可能有的 goroutine。这里其实涉及到一个协程写另一个协程栈的操作。直接从源地址把数据 copy 到目的地址就可以了，效率高啊！
+
+  ![avatar](../doc/img/11.jpg)
+
+#### 关闭
+##### 当关闭某个channel，会执行函数closechan
+###### closechan源码
+```go
+```
+## Channel进阶
