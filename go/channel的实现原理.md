@@ -788,6 +788,7 @@ Channel可能会引起goroutine泄漏
     第三条，也是比较好理解的。第 n 个 send 如果被阻塞，sender goroutine 挂起，第 n 个 receive 这时到来，先于第 n 个 send finished。如果第 n 个 send 未被阻塞，说明第 n 个 receive 早就在那等着了，它不仅 happened before send finished，它还 happened before send。
     第四条，回忆一下源码，先设置完 closed = 1，再唤醒等待的 receiver，并将零值拷贝给 receiver。
 ######Demo
+
 ```go
 var done = make(chan bool)
 var msg string
@@ -807,6 +808,7 @@ func main() {
     加了 <-done 这行代码后，就会阻塞在此。等 aGoroutine 里向 done 发送了一个值之后，才会被唤醒，继续执行打印 msg 的操作。而这在之前，msg 已经被赋值过了，所以会打印出 hello, world。
     这里依赖的 happened before 就是前面讲的第一条。第一个 send 一定 happened before 第一个 receive finished，即 done <- true 先于 <-done 发生，这意味着 main 函数里执行完 <-done 后接着执行 println(msg) 这一行代码时，msg 已经被赋过值了，所以会打印出想要的结果。
 ######又进一步利用前面提到的第 3 条 happened before 规则，修改了一下代码：
+
 ```go
 var done = make(chan bool)
 var msg string
@@ -824,6 +826,7 @@ func main() {
 ```
     同样可以得到相同的结果，为什么？根据第三条规则，对于非缓冲型的 channel，第一个 receive 一定 happened before 第一个 send finished。也就是说，在 done <- true 完成之前，<-done 就已经发生了，也就意味着 msg 已经被赋上值了，最终也会打印出 hello, world。
 ###如何优雅地关闭 channel
+
 * 关于 channel 的使用，有几点不方便的地方：
 1. 在不改变 channel 自身状态的情况下，无法获知一个 channel 是否关闭。
 
@@ -832,6 +835,7 @@ func main() {
 3. 向一个 closed channel 发送数据会导致 panic。所以，如果向 channel 发送数据的一方不知道 channel 是否处于关闭状态时就去贸然向 channel 发送数据是很危险的事情。
 
 ######检查 channel 是否关闭的函数：
+
 ```go
 func IsClosed(ch <-chan T) bool {
 	select {
@@ -860,6 +864,7 @@ func main() {
 2. 不要向已经关闭的channel执行关闭操作和发送数据。
 
 #####不优雅的关闭channel方法：
+
 1. 使用 defer-recover 机制，放心大胆地关闭 channel 或者向 channel 发送数据。即使发生了 panic，有 defer-recover 在兜底。
 2. 使用 sync.Once 来保证只关闭一次。
 #####如何优雅的关闭channel
@@ -1037,6 +1042,7 @@ channel closed, data invalid.
 ```
     先创建了一个有缓冲的 channel，向其发送一个元素，然后关闭此 channel。之后两次尝试从 channel 中读取数据，第一次仍然能正常读出值。第二次返回的 ok 为 false，说明 channel 已关闭，且通道里没有数据。
 ##Channel应用
+
 * **Channel 和 goroutine 的结合是 Go 并发编程的大杀器。而 Channel 的实际应用也经常让人眼前一亮，通过与 select，cancel，timer 等结合，它能实现各种各样的功能。接下来，我们就要梳理一下 channel 的应用。**
 
 ### 停止信号
@@ -1069,6 +1075,7 @@ func worker() {
 ```
     每隔 1 秒种，执行一次定时任务。
 ###解耦生产方和消费方
+
 * *服务启动时，启动 n 个 worker，作为工作协程池，这些协程工作在一个 for {} 无限循环里，从某个 channel 消费工作任务并执行：*
 ```go
 func main() {
@@ -1101,7 +1108,8 @@ func worker(taskCh <-chan int) {
 }
 ```
     5 个工作协程在不断地从工作队列里取任务，生产方只管往 channel 发送任务即可，解耦生产方和消费方。
-######程序输出：
+#####程序输出：
+
 ```shell
 finish task: 1 by worker 4
 finish task: 2 by worker 2
@@ -1114,7 +1122,8 @@ finish task: 9 by worker 1
 finish task: 7 by worker 4
 finish task: 5 by worker 2
 ```
-###控制并发数
+### 控制并发数
+
 * *有时需要定时执行几百个任务，例如每天定时按城市来执行一些离线计算的任务。但是并发数又不能太高，因为任务执行过程依赖第三方的一些资源，对请求的速率有限制。这时就可以通过 channel 来控制并发数。*
 ```go
 var limit = make(chan int, 3)
@@ -1136,5 +1145,5 @@ func main() {
 
 ## 参考资料
 
-[深度揭秘Go语言之Channel]:https://juejin.im/post/5d350e70f265da1b897b0cbe#heading-17
+[深度解密Go语言之channel](https://juejin.im/post/5d350e70f265da1b897b0cbe)
 
