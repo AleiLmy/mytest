@@ -717,7 +717,7 @@ func closechan(c *hchan) {
     1. 总结一下，发生 panic 的情况有三种：向一个关闭的 channel 进行写操作；关闭一个 nil 的 channel；重复关闭一个 channel。
     2. 读、写一个 nil channel 都会被阻塞。
 
-##Channel进阶
+## Channel进阶
 
 ### 发送和接收元素的本质
 
@@ -787,7 +787,7 @@ Channel可能会引起goroutine泄漏
     第二条，缓冲型的 channel，当第 n+m 个 send 发生后，有下面两种情况：若第 n 个 receive 没发生。这时，channel 被填满了，send 就会被阻塞。那当第 n 个 receive 发生时，sender goroutine 会被唤醒，之后再继续发送过程。这样，第 n 个 receive 一定 happened before 第 n+m 个 send finished。若第 n 个 receive 已经发生过了，这直接就符合了要求。
     第三条，也是比较好理解的。第 n 个 send 如果被阻塞，sender goroutine 挂起，第 n 个 receive 这时到来，先于第 n 个 send finished。如果第 n 个 send 未被阻塞，说明第 n 个 receive 早就在那等着了，它不仅 happened before send finished，它还 happened before send。
     第四条，回忆一下源码，先设置完 closed = 1，再唤醒等待的 receiver，并将零值拷贝给 receiver。
-######Demo
+###### Demo
 
 ```go
 var done = make(chan bool)
@@ -807,7 +807,7 @@ func main() {
     先定义了一个 done channel 和一个待打印的字符串。在 main 函数里，启动一个 goroutine，等待从 done 里接收到一个值后，执行打印 msg 的操作。如果 main 函数中没有 <-done 这行代码，打印出来的 msg 为空，因为 aGoroutine 来不及被调度，还来不及给 msg 赋值，主程序就会退出。而在 Go 语言里，主协程退出时不会等待其他协程。
     加了 <-done 这行代码后，就会阻塞在此。等 aGoroutine 里向 done 发送了一个值之后，才会被唤醒，继续执行打印 msg 的操作。而这在之前，msg 已经被赋值过了，所以会打印出 hello, world。
     这里依赖的 happened before 就是前面讲的第一条。第一个 send 一定 happened before 第一个 receive finished，即 done <- true 先于 <-done 发生，这意味着 main 函数里执行完 <-done 后接着执行 println(msg) 这一行代码时，msg 已经被赋过值了，所以会打印出想要的结果。
-######又进一步利用前面提到的第 3 条 happened before 规则，修改了一下代码：
+###### 又进一步利用前面提到的第 3 条 happened before 规则，修改了一下代码：
 
 ```go
 var done = make(chan bool)
@@ -825,7 +825,7 @@ func main() {
 }
 ```
     同样可以得到相同的结果，为什么？根据第三条规则，对于非缓冲型的 channel，第一个 receive 一定 happened before 第一个 send finished。也就是说，在 done <- true 完成之前，<-done 就已经发生了，也就意味着 msg 已经被赋上值了，最终也会打印出 hello, world。
-###如何优雅地关闭 channel
+### 如何优雅地关闭 channel
 
 * 关于 channel 的使用，有几点不方便的地方：
 1. 在不改变 channel 自身状态的情况下，无法获知一个 channel 是否关闭。
@@ -834,7 +834,7 @@ func main() {
 
 3. 向一个 closed channel 发送数据会导致 panic。所以，如果向 channel 发送数据的一方不知道 channel 是否处于关闭状态时就去贸然向 channel 发送数据是很危险的事情。
 
-######检查 channel 是否关闭的函数：
+###### 检查 channel 是否关闭的函数：
 
 ```go
 func IsClosed(ch <-chan T) bool {
@@ -856,14 +856,14 @@ func main() {
 ```
     看一下代码，其实存在很多问题。首先，IsClosed 函数是一个有副作用的函数。每调用一次，都会读出 channel 里的一个元素，改变了 channel 的状态。这不是一个好的函数，干活就干活，还顺手牵羊！
     其次，IsClosed 函数返回的结果仅代表调用那个瞬间，并不能保证调用之后会不会有其他 goroutine 对它进行了一些操作，改变了它的这种状态。例如，IsClosed 函数返回 true，但这时有另一个 goroutine 关闭了 channel，而你还拿着这个过时的 “channel 未关闭”的信息，向其发送数据，就会导致 panic 的发生。当然，一个 channel 不会被重复关闭两次，如果 IsClosed 函数返回的结果是 true，说明 channel 是真的关闭了。
-#####广为流传的关闭channel原则：
+##### 广为流传的关闭channel原则：
 
 1. 不要从一个 receiver 侧关闭 channel，也不要在有多个 sender 时，关闭 channel。
         *比较好理解，向 channel 发送元素的就是 sender，因此 sender 可以决定何时不发送数据，并且关闭 channel。但是如果有多个 sender，某个 sender 同样没法确定其他 sender 的情况，这时也不能贸然关闭 channel。*
    
 2. 不要向已经关闭的channel执行关闭操作和发送数据。
 
-#####不优雅的关闭channel方法：
+##### 不优雅的关闭channel方法：
 
 1. 使用 defer-recover 机制，放心大胆地关闭 channel 或者向 channel 发送数据。即使发生了 panic，有 defer-recover 在兜底。
 2. 使用 sync.Once 来保证只关闭一次。
@@ -1016,7 +1016,7 @@ toStop := make(chan string, NumReceivers + NumSenders)
 ```
     直接向 toStop 发送请求，因为 toStop 容量足够大，所以不用担心阻塞，自然也就不用 select 语句再加一个 default case 来避免阻塞。
     可以看到，这里同样没有真正关闭 dataCh，原样同第 3 种情况。
-###关闭的 channel 仍能读出数据
+### 关闭的 channel 仍能读出数据
 
 * *从一个有缓冲的 channel 里读数据，当 channel 被关闭，依然能读出有效值。只有当返回的 ok 为 false 时，读出的数据才是无效的。*
 #####demo:
@@ -1041,7 +1041,7 @@ received:  18
 channel closed, data invalid.
 ```
     先创建了一个有缓冲的 channel，向其发送一个元素，然后关闭此 channel。之后两次尝试从 channel 中读取数据，第一次仍然能正常读出值。第二次返回的 ok 为 false，说明 channel 已关闭，且通道里没有数据。
-##Channel应用
+## Channel应用
 
 * **Channel 和 goroutine 的结合是 Go 并发编程的大杀器。而 Channel 的实际应用也经常让人眼前一亮，通过与 select，cancel，timer 等结合，它能实现各种各样的功能。接下来，我们就要梳理一下 channel 的应用。**
 
@@ -1074,7 +1074,7 @@ func worker() {
 	}
 ```
     每隔 1 秒种，执行一次定时任务。
-###解耦生产方和消费方
+### 解耦生产方和消费方
 
 * *服务启动时，启动 n 个 worker，作为工作协程池，这些协程工作在一个 for {} 无限循环里，从某个 channel 消费工作任务并执行：*
 ```go
@@ -1108,7 +1108,7 @@ func worker(taskCh <-chan int) {
 }
 ```
     5 个工作协程在不断地从工作队列里取任务，生产方只管往 channel 发送任务即可，解耦生产方和消费方。
-#####程序输出：
+##### 程序输出：
 
 ```shell
 finish task: 1 by worker 4
