@@ -214,9 +214,9 @@ Go中的内存分类并不像TCMalloc那样分成小、中、大对象，但是�
 
 #### 3.2.1 小对象分配
 
-![img](https://wiki.inkept.cn/download/attachments/69317888/image2019-7-14_17-49-15.png?version=1&modificationDate=1563097755000&api=v2)
+![avatar](../doc/go/16.png)
 
-大小转换这一小节，我们介绍了转换表，size class从1到66共66个，代码中`_NumSizeClasses=67`代表了实际使用的size class数量，即67个，从0到67，size class 0实际并未使用到。
+- 大小转换这一小节，我们介绍了转换表，size class从1到66共66个，代码中`_NumSizeClasses=67`代表了实际使用的size class数量，即67个，从0到67，size class 0实际并未使用到。
 
 上文提到1个size class对应2个span class：
 
@@ -239,17 +239,17 @@ Go中的内存分类并不像TCMalloc那样分成小、中、大对象，但是�
 
 根据映射表：
 
-![img](https://wiki.inkept.cn/download/attachments/69317888/image2019-7-14_17-50-54.png?version=1&modificationDate=1563097855000&api=v2)
+![avatar](../doc/go/17.png)
 
 size class 3，它的对象大小范围是(16,32]Byte，24Byte刚好在此区间，所以此对象的size class为3。
 
 Size class到span class的计算如下：
 
-![img](https://wiki.inkept.cn/download/attachments/69317888/image2019-7-14_17-51-20.png?version=1&modificationDate=1563097880000&api=v2)
+![avatar](../doc/go/18.png)
 
-```
+```shell
 所以，对应的span class为：
-
+span class  = 3 << 1 | 1 = 7
 所以该对象需要的是span class 7指向的span。
 ```
 
@@ -257,7 +257,7 @@ Size class到span class的计算如下：
 
 Span可以按对象大小切成很多份，这些都可以从映射表上计算出来，以size class 3对应的span为例，span大小是8KB，每个对象实际所占空间为32Byte，这个span就被分成了256块，可以根据span的起始地址计算出每个对象块的内存地址。
 
-![img](https://wiki.inkept.cn/download/attachments/69317888/image2019-7-14_17-52-55.png?version=1&modificationDate=1563097975000&api=v2)
+![avatar](../doc/go/20.png)
 
 随着内存的分配，span中的对象内存块，有些被占用，有些未被占用，比如上图，整体代表1个span，蓝色块代表已被占用内存，绿色块代表未被占用内存。
 
@@ -276,7 +276,7 @@ mcentral和mcache一样，都是0~133这134个span class级别，但每个级别
 
 这2个东西名称一直有点绕，建议直接把empty理解为没有对象空间就好了。
 
-![img](https://wiki.inkept.cn/download/attachments/69317888/image2019-7-14_17-55-12.png?version=1&modificationDate=1563098112000&api=v2)
+![avatar](../doc/go/21.png)
 
 *实际代码中每1个span class对应1个mcentral，图里把所有mcentral抽象成1个整体了。*
 
@@ -291,7 +291,7 @@ mheap里保存了2棵**二叉排序树**，按span的page数量进行排序：
 
 如果是垃圾回收导致的span释放，span会被加入到`scav`，否则加入到`free`，比如刚从OS申请的的内存也组成的Span。
 
-![img](https://wiki.inkept.cn/download/attachments/69317888/image2019-7-14_17-56-48.png?version=1&modificationDate=1563098208000&api=v2)
+<img src="../doc/go/22.png" alt="avatar" style="zoom:67%;" />
 
 mheap中还有arenas，有一组heapArena组成，每一个heapArena都包含了连续的`pagesPerArena`个span，这个主要是为mheap管理span和垃圾回收服务。
 
@@ -309,11 +309,11 @@ mcentral需要向mheap提供需要的内存页数和span class级别，然后它
 
 在32位系统上，mheap还会预留一部分空间，当mheap没有空间时，先从预留空间申请，如果预留空间内存也没有了，才向OS申请。
 
-### 2.2 大对象分配
+#### 2.2.2 大对象分配
 
 大对象的分配比小对象省事多了，99%的流程与mcentral向mheap申请内存的相同，所以不重复介绍了，不同的一点在于mheap会记录一点大对象的统计信息，见`mheap.alloc_m()`。
 
-# 四、 Go的栈内存
+## 四、 Go的栈内存
 
 最后提一下栈内存。从一个宏观的角度看，内存管理不应当只有堆，也应当有栈。
 
@@ -323,15 +323,162 @@ mcentral需要向mheap提供需要的内存页数和span class级别，然后它
 
 > 可以看到在rpc调用(*grpc invoke*)时，栈会发生扩容(*runtime.morestack*)，也就意味着在读写routine内的任何rpc调用都会导致栈扩容， 占用的内存空间会扩大为原来的两倍，4kB的栈会变为8kB，100w的连接的内存占用会从8G扩大为16G（全双工，不考虑其他开销），这简直是噩梦。
 
-# 五、 代码讲解
+## 五、 代码讲解
 
 - new一个对象的时候，入口函数是malloc.go中的newobject函数
-
- 展开源码
+```go
+func newobject(typ *_type) unsafe.Pointer {
+    flags := uint32(0)
+    if typ.kind&kindNoPointers != 0 {
+        flags |= flagNoScan
+    }
+    return mallocgc(uintptr(typ.size), typ, flags)
+}
+```
 
 - 这个函数先计算出传入参数的大小，然后调用mallocgc函数，这个函数三个参数，第一个参数是对象类型大小，第二个参数是对象类型，第三个参数是malloc的标志位，这个标志位有两位，一个标志位代表GC不需要扫描这个对象，另一个标志位说明这个对象并不是空内存
 
- 展开源码
+```go
+const (
+    // flags to malloc
+    _FlagNoScan = 1 << 0 // GC doesn't have to scan object
+    _FlagNoZero = 1 << 1 // don't zero memory
+)
+//mallocgc函数定义如下：
+func mallocgc(size uintptr, typ *_type, flags uint32) unsafe.Pointer
+// 基本的条件符合判断 ...
+ 
+// 分配指定object的大小(bytes数)
+// 当分配的object大小 <= 32kb  使用每个P本地缓存空闲列表即可
+// > 32 kB 直接堆上进行分配.
+func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
+    // 零长度对象
+    if size == 0 {
+        return unsafe.Pointer(&zerobase) // 在heap上分配，则都指向预设的同一全局变量(零长度的object的地址均相同)
+    }
+       // 预分配对象大小 <= 32KB
+    if size <= maxSmallSize {
+        if noscan && size < maxTinySize {// 微小对象分配
+            // 微小对象分配时则会将多个微小内存分配请求合并到一个单独的内存块
+            // 当这些子对象变得不可达时，则会被释放掉
+            //  这些子对象必须是不可扫描(没有任何关联的指针)，这样能够确保内存浪费的可能性降低.
+            //
+            // 关于maxTinySize组合后内存大小是可调的，目前默认设置=16bytes，在组合的对象中仅有一个对象是不可达的情况会造成近2倍左右内存浪费
+            // 若设置=8bytes将基本不会带来内存浪费，但是合并的可能性就会降低
+            // 若设置=32bytes有可能会带来大约4倍的内存浪费，同时也提供更多的组合机会
+            // 所以这一块的微小对象组合阈值设定时 最好能够保持是8的倍数:8x
+            //
+            // 需要注意：从微型分配器获取的对象是不能直接显示释放的
+            // 若是想释放获取的对象，则需要该对象的大小 >= maxTinySize.
+            //
+            // 微型分配器面向的分配对象小的string和单独转义的变量
+            // 以json为基准的性能，微型分配器带来了减少12%分配量
+            // 并降低了大约20%堆大小
+        } else {  // 小对象分配 
+            // 代码省略
+            // 获取对应class对应size等级=> size和spc
+        }
+    } else { // 大对象分配
+        //  代码省略
+        //  一般来说大对象数量相对比较少，生命周期比较长在内存中复用的可能性较低
+        // 大对象所占内存不能算作碎片，这也是为嘛把大对象单独提出来处理的原因
+        // 在Go中自定义栈大小=1GB，对象的分配默认优先在栈上而非heap堆
+        // 在堆上分配时，直接从heap中获取大小合适的内存块，大块内存都是以页为单位
+    }
+}
+ 
+ 
+ 
+// 获取当前goroutine的m结构
+mp := acquirem()
+// 如果当前的m正在执行分配任务，则抛出错误
+if mp.mallocing != 0 {
+    throw("malloc deadlock")
+}
+if mp.gsignal == getg() {
+    throw("malloc during signal")
+}
+// 锁住当前的m进行分配
+mp.mallocing = 1
+ 
+shouldhelpgc := false
+dataSize := size
+// 获取当前goroutine的m的mcache
+c := gomcache()
+var s *mspan
+var x unsafe.Pointer
+ 
+ 
+// 是微小对象
+// 进行微小对象的校准操作
+// ...
+ 
+// 如果是微小对象，并且申请的对象微小对象能cover住
+if off+size <= maxTinySize && c.tiny != nil {
+    // 直接在tiny的块中进行分配就行了
+    x = add(c.tiny, off)
+    ...
+    return x
+}
+ 
+// 从mcache中获取对应的span链表
+s = c.alloc[tinySizeClass]
+v := s.freelist
+// 如果这个span链表没有微小对象的空闲span了，从MCache中获取tinySize的链表补充上这个tiny链表
+if v.ptr() == nil {
+    systemstack(func() {
+        mCache_Refill(c, tinySizeClass)
+    })
+}
+s.freelist = v.ptr().next
+s.ref++
+ 
+// 预读取指令能加快速度
+prefetchnta(uintptr(v.ptr().next))
+// 初始化微小结构
+x = unsafe.Pointer(v)
+(*[2]uint64)(x)[0] = 0
+(*[2]uint64)(x)[1] = 0
+ 
+// 对比新旧两个tiny块剩余空间
+if size < c.tinyoffset {
+    // 如果旧块的剩余空间比新块少，则使用新块替代mcache中的tiny块
+    c.tiny = x
+    c.tinyoffset = size
+}
+ 
+ 
+// 是小对象
+var sizeclass int8
+// 计算最接近的size
+if size <= 1024-8 {
+    sizeclass = size_to_class8[(size+7)>>3]
+} else {
+    sizeclass = size_to_class128[(size-1024+127)>>7]
+}
+size = uintptr(class_to_size[sizeclass])
+ 
+// 获取mcache中预先分配的spans链表
+s = c.alloc[sizeclass]
+v := s.freelist
+if v.ptr() == nil {
+    // 如果没有链表了，则从mcache中划出对应的spans链表
+    systemstack(func() {
+        mCache_Refill(c, int32(sizeclass))
+    })
+}
+// 有链表则直接使用
+s.freelist = v.ptr().next
+s.ref++
+ 
+ 
+// 如果是大对象，直接去heap中获取数据
+systemstack(func() {
+    s = largeAlloc(size, uint32(flags))
+})
+x = unsafe.Pointer(uintptr(s.start << pageShift))
+size = uintptr(s.elemsize)
+```
 
 总结一下
 
@@ -342,8 +489,260 @@ mcentral需要向mheap提供需要的内存页数和span class级别，然后它
 
 再仔细看代码，不管是tiny大小的对象还是小对象，他们去mcache中获取对象都是使用mCache_Refill方法为这个对象对应的链表申请内存。
 
- 展开源码
-
+```go
+func mCache_Refill(c *mcache, sizeclass int32) *mspan {
+    // 获取当时的goroutine
+    _g_ := getg()
+ 
+    // 锁上m
+    _g_.m.locks++
+    // 获取对应sizeclass的span链表，如果对应的链表还有剩余空间，抛出错误
+    s := c.alloc[sizeclass]
+    if s.freelist.ptr() != nil {
+        throw("refill on a nonempty span")
+    }
+ 
+    // 从mCentral中获取span链表，并赋值
+    s = mCentral_CacheSpan(&mheap_.central[sizeclass].mcentral)
+ 
+    c.alloc[sizeclass] = s
+ 
+    // 打开锁
+    _g_.m.locks--
+    return s
+}
+ 
+//这里实际是使用mCentral_CacheSpan来获取内存，这里需要看下mCentral的结构
+type mcentral struct {
+    lock      mutex
+    sizeclass int32
+    nonempty  mspan // list of spans with a free object
+    empty     mspan // list of spans with no free objects (or cached in an mcache)
+}
+//lock: 多个G并发从central申请span，所以需要lock，保证一致性
+//spanclass : 每个mcentral管理着一组有相同size class的span列表
+//nonempty: 指还有内存可用的span列表
+//empty: 指没有内存可用的span列表
+//nmalloc: 指累计分配的对象个数
+//mcentral有两个链表，一个链表是有空闲的span可以使用，叫noempty，另一个链表是没有空间的span可以使用，叫empty。
+//这个时候我们需要获取span，一定是从nonempty链表中取出span来使用。
+//这两个链表的机制是这样的，我new一个对象的时候，从nonempty中获取这个空间，放到empty链表中去，当我free一个对象的时候，
+//从empty链表中还原到nonempty链表中去。
+ 
+//所以在下面获取空span的时候，会先去empty中查找有没有，如果没有，再去nonempty中查找有没有，
+//nonempty中有可能有为资源回收但是却是没有使用的span。
+ 
+func mCentral_CacheSpan(c *mcentral) *mspan {
+ 
+    sg := mheap_.sweepgen
+retry:
+    var s *mspan
+    // 遍历有空间span的链表
+    for s = c.nonempty.next; s != &c.nonempty; s = s.next {
+        // 如果这个span是需要回收的，那么先回收这个span，转移到empty链表中，再把这个span返回
+        if s.sweepgen == sg-2 && cas(&s.sweepgen, sg-2, sg-1) {
+            mSpanList_Remove(s)
+            mSpanList_InsertBack(&c.empty, s)
+            unlock(&c.lock)
+            // 垃圾清理
+            mSpan_Sweep(s, true)
+            goto havespan
+        }
+ 
+        // 如果nonempty中有不需要swapping的空间，这个就可以直接使用了
+        mSpanList_Remove(s)
+        mSpanList_InsertBack(&c.empty, s)
+        unlock(&c.lock)
+        goto havespan
+    }
+ 
+    // 遍历没有空间的span链表，为什么没有空间的span链表也需要遍历呢？
+    for s = c.empty.next; s != &c.empty; s = s.next {
+        // 如果这个span是需要回收的，回收之
+        if s.sweepgen == sg-2 && cas(&s.sweepgen, sg-2, sg-1) {
+            mSpanList_Remove(s)
+            mSpanList_InsertBack(&c.empty, s)
+            unlock(&c.lock)
+            mSpan_Sweep(s, true)
+            if s.freelist.ptr() != nil {
+                goto havespan
+            }
+            lock(&c.lock)
+            goto retry
+        }
+ 
+        break
+    }
+    unlock(&c.lock)
+ 
+    // 到这里就说明central中都没有可以使用的span了，那么，就增长mCentral
+    s = mCentral_Grow(c)
+    mSpanList_InsertBack(&c.empty, s)
+ 
+havespan:  
+    // 找到空span的情况
+    cap := int32((s.npages << _PageShift) / s.elemsize)
+    n := cap - int32(s.ref)
+    if n == 0 {
+        throw("empty span")
+    }
+    if s.freelist.ptr() == nil {
+        throw("freelist empty")
+    }
+    s.incache = true
+    return s
+}
+ 
+//mCentral判断一个span是否过期是使用
+s.sweepgen == sg-2 && cas(&s.sweepgen, sg-2, sg-1)
+ 
+//这个sweepgen是span和mheap中各有一个，根据这两个结构的sweepgen就能判断这个span是否需要进入gc回收了。
+// sweep generation:
+// if sweepgen == h->sweepgen - 2, the span needs sweeping
+// if sweepgen == h->sweepgen - 1, the span is currently being swept
+// if sweepgen == h->sweepgen, the span is swept and ready to use
+// h->sweepgen is incremented by 2 after every GC
+ 
+//如果mCentral没有可用的span了，就需要调用mCentral_Grow(c)
+func mCentral_Grow(c *mcentral) *mspan {
+    ...
+    // 从heap上进行分配
+    s := mHeap_Alloc(&mheap_, npages, c.sizeclass, false, true)
+    ...
+    // 设置span的bitmap
+    heapBitsForSpan(s.base()).initSpan(s.layout())
+    return s
+}
+ 
+//再进入到mHeap_Alloc
+func mHeap_Alloc(h *mheap, npage uintptr, sizeclass int32, large bool, needzero bool) *mspan {
+    ...
+    systemstack(func() {
+        s = mHeap_Alloc_m(h, npage, sizeclass, large)
+    })
+    ...
+}
+ 
+//再进入mHeap_Alloc_m
+func mHeap_Alloc_m(h *mheap, npage uintptr, sizeclass int32, large bool) *mspan {
+    ...
+    s := mHeap_AllocSpanLocked(h, npage)
+    ...
+ 
+    return s
+}
+ 
+func mHeap_AllocSpanLocked(h *mheap, npage uintptr) *mspan {
+    ...
+    // 获取Heap中最合适的内存大小
+    s = mHeap_AllocLarge(h, npage)
+    // 如果mHeap满了
+    if s == nil {
+        // 增长mHeap大小
+        if !mHeap_Grow(h, npage) {
+            return nil
+        }
+        s = mHeap_AllocLarge(h, npage)
+        if s == nil {
+            return nil
+        }
+    }
+ 
+HaveSpan:
+    // mHeap中有了数据
+}
+ 
+//看看如何增长mHeap大小
+func mHeap_Grow(h *mheap, npage uintptr) bool {
+    ...
+    // 调用操作系统分配内存
+    v := mHeap_SysAlloc(h, ask)
+    ...
+}
+ 
+//下面就看到mheap的扩容了，这个之前需要了解heap的结构
+type mheap struct {
+    lock      mutex
+    free      [_MaxMHeapList]mspan // free lists of given length
+    freelarge mspan                // free lists length >= _MaxMHeapList
+    busy      [_MaxMHeapList]mspan // busy lists of large objects of given length
+    busylarge mspan                // busy lists of large objects length >= _MaxMHeapList
+    allspans  **mspan              // all spans out there
+    gcspans   **mspan              // copy of allspans referenced by gc marker or sweeper
+    nspan     uint32
+    sweepgen  uint32 // sweep generation, see comment in mspan
+    sweepdone uint32 // all spans are swept
+    // span lookup
+    spans        **mspan
+    spans_mapped uintptr
+ 
+    // Proportional sweep
+    spanBytesAlloc    uint64  // bytes of spans allocated this cycle; updated atomically
+    pagesSwept        uint64  // pages swept this cycle; updated atomically
+    sweepPagesPerByte float64 // proportional sweep ratio; written with lock, read without
+ 
+    // Malloc stats.
+    largefree  uint64                  // bytes freed for large objects (>maxsmallsize)
+    nlargefree uint64                  // number of frees for large objects (>maxsmallsize)
+    nsmallfree [_NumSizeClasses]uint64 // number of frees for small objects (<=maxsmallsize)
+ 
+    // range of addresses we might see in the heap
+    bitmap         uintptr
+    bitmap_mapped  uintptr
+    arena_start    uintptr
+    arena_used     uintptr // always mHeap_Map{Bits,Spans} before updating
+    arena_end      uintptr
+    arena_reserved bool
+ 
+    // central free lists for small size classes.
+    // the padding makes sure that the MCentrals are
+    // spaced CacheLineSize bytes apart, so that each MCentral.lock
+    // gets its own cache line.
+    central [_NumSizeClasses]struct {
+        mcentral mcentral
+        pad      [_CacheLineSize]byte
+    }
+ 
+    spanalloc             fixalloc // allocator for span*
+    cachealloc            fixalloc // allocator for mcache*
+    specialfinalizeralloc fixalloc // allocator for specialfinalizer*
+    specialprofilealloc   fixalloc // allocator for specialprofile*
+    speciallock           mutex    // lock for special record allocators.
+}
+//spans：映射span -> page
+//large：大对象，>32K
+//bitmap： gc
+//arena： arena区相关信息，pages，堆区
+//central：通过size class管理span，每种size class对应两个central
+ 
+//它最重要的结构有三个，spans，指向所有span指针，bitmap是spans的标志位，arena是堆生成区。
++---------------------+---------------+-----------------------------+
+| spans 512MB .......| bitmap 32GB | arena 512GB ..................|
++---------------------+---------------+-----------------------------+ +
+func mHeap_SysAlloc(h *mheap, n uintptr) unsafe.Pointer {
+    // 如果超出了arean预留的区块限制了
+    if n > uintptr(h.arena_end)-uintptr(h.arena_used) {
+        // 使用一些系统保留的空间
+        ...
+    }
+ 
+    // 申请的大小在arean范围内
+    if n <= uintptr(h.arena_end)-uintptr(h.arena_used) {
+        // 使用系统的sysMap申请内存
+        sysMap((unsafe.Pointer)(p), n, h.arena_reserved, &memstats.heap_sys)
+        mHeap_MapBits(h, p+n)
+        mHeap_MapSpans(h, p+n)
+        ...
+    }
+    ...
+}
+func sysMap(v unsafe.Pointer, n uintptr, reserved bool, sysStat *uint64) {
+    ...
+    // 最终调用mmap
+    p := mmap(v, n, _PROT_READ|_PROT_WRITE, _MAP_ANON|_MAP_FIXED|_MAP_PRIVATE, -1, 0)
+    ...
+}
+```
 
 线程从central获取span步骤如下：
 
@@ -363,13 +762,13 @@ mcentral需要向mheap提供需要的内存页数和span class级别，然后它
 
 
 
-# 六、 Go垃圾回收和内存释放
+## 六、 Go垃圾回收和内存释放
 
-### 1.1 GC
+### 6.1 GC
 
 如果只申请和分配内存，内存终将枯竭，Go使用垃圾回收收集不再使用的span，调用`mspan.scavenge()`把span释放给OS（并非真释放，只是告诉OS这片内存的信息无用了，如果你需要的话，收回去好了），然后交给mheap，mheap对span进行span的合并，把合并后的span加入`scav`树中，等待再分配内存时，由mheap进行内存再分配，Go垃圾回收也是一个很强的主题。
 
-### 1.2 逃逸分析
+### 6.2 逃逸分析
 
 - 什么是逃逸分析
 
