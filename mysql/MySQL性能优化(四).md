@@ -34,19 +34,18 @@ explain select * from tb_student;
 
 ![avatar](../doc/mysql/mysql4/1.jpg)
 
-	1. **id**：标识符，表示执行顺序
-
- 	2. **select _type**：查询类型
- 	3. **table**：输出行所引用的表
- 	4. **partitions**：使用的哪个分区，需要结合表分区才可以看到
- 	5. **type**：表示按某种类型来查询，例如按照索引类型查找，按照范围查找。从最好到最差的连接类型为const、eq_reg、ref、range、indexhe和all
- 	6. **possible_keys**：可能用到的索引，保存的是索引名称，如果是多个索引的话，用逗号隔开
- 	7. **key**：实际用到的索引，保存的是索引名称，如果是多个索引的话，用逗号隔开
- 	8. **key_len**：表示本次查询中，所选择的索引长度有多少字节
- 	9. **ref**：显示索引的哪一列被使用了，如果可能的话，是一个常数
- 	10. **rows**：显示mysql认为执行查询时必须要返回的行数
- 	11. **filtered**：通过过滤条件之后对比总数的百分比
- 	12. **extra**：额外的信息，例如：using file sort ，using where， using join buffer，using index等
+1. **id**：标识符，表示执行顺序
+2. **select _type**：查询类型
+3. **table**：输出行所引用的表
+4. **partitions**：使用的哪个分区，需要结合表分区才可以看到
+5. **type**：表示按某种类型来查询，例如按照索引类型查找，按照范围查找。从最好到最差的连接类型为const、eq_reg、ref、range、indexhe和all
+6. **possible_keys**：可能用到的索引，保存的是索引名称，如果是多个索引的话，用逗号隔开
+7. **key**：实际用到的索引，保存的是索引名称，如果是多个索引的话，用逗号隔开
+8. **key_len**：表示本次查询中，所选择的索引长度有多少字节
+9. **ref**：显示索引的哪一列被使用了，如果可能的话，是一个常数
+10. **rows**：显示mysql认为执行查询时必须要返回的行数
+11. **filtered**：通过过滤条件之后对比总数的百分比
+12. **extra**：额外的信息，例如：using file sort ，using where， using join buffer，using index等
 
 ## 五、执行计划中各个参数详解
 
