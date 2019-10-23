@@ -110,25 +110,21 @@ ____
 >
 >         (1)   where address='深圳' 不会走索引 
 >
->         ![avatar](../doc/mysql/mysql3/2.jpg)
+>        ![avatar](../doc/mysql/mysql3/2.jpg)
 >
 >         (2)  where address = '深圳' and remark='程序员' 不会走索引  
 >
->         ![avatar](../doc/mysql/mysql3/3.jpg)
+>        ![avatar](../doc/mysql/mysql3/3.jpg)
 >
 >     2. 查询中某个列有范围查询，则其右边的所有列都无法使用查询（多列查询）
 >
->         (1)  where name='xbq' and address like '%深%' and remark='程序员' ，该查询只会使用索引中的前两列，因为like是范围查询
+>         (1)  where name='xbq' and address like '%深%' and remark='程序员' ，该查询只会使用索引中的前两列，因为like是范围查询 ![avatar](../doc/mysql/mysql3/4.jpg)
 >
->         ![avatar](../doc/mysql/mysql3/4.jpg)
->
->     3. 查询中第一个索引字段出现like '%xxx%'或者'%xxx'，不会走索引
->
->         ![avatar](../doc/mysql/mysql3/5.jpg)
+>        3. 查询中第一个索引字段出现like '%xxx%'或者'%xxx'，不会走索引 ![avatar](../doc/mysql/mysql3/5.jpg)
 >
 >     4. 查询中多条件用or连接，此类型和1相似
 >
->         ![avatar](../doc/mysql/mysql3/6.jpg)
+>        ![avatar](../doc/mysql/mysql3/6.jpg)
 
 3. **删除索引**
 
