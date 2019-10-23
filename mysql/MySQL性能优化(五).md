@@ -1,4 +1,4 @@
-# MySQL性能优化 (五) ---using filesort
+# MySQL性能优化 (五) ---using filesort、in和exists
 
 ___
 
@@ -90,3 +90,60 @@ create index idx_cate_buy on course(category_id,buy_times);
 
 ***综上所述，3、4、6、7、9、10都会产生using filesort。***
 
+## 二、in和exists哪个性能更优
+
+* sql脚本
+
+```mysql
+/*建库*/
+create database testdb6;
+use testdb6;
+/* 用户表 */
+drop table if exists users;
+create table users(
+	id int primary key auto_increment,
+	name varchar(20)
+);
+insert into users(name) values ('A');
+insert into users(name) values ('B');
+insert into users(name) values ('C');
+insert into users(name) values ('D');
+insert into users(name) values ('E');
+insert into users(name) values ('F');
+insert into users(name) values ('G');
+insert into users(name) values ('H');
+insert into users(name) values ('I');
+insert into users(name) values ('J');
+
+/* 订单表 */
+drop table if exists orders;
+create table orders(
+	id int primary key auto_increment,/*订单id*/
+	order_no varchar(20) not null,/*订单编号*/
+	title varchar(20) not null,/*订单标题*/
+	goods_num int not null,/*订单数量*/
+	money decimal(7,4) not null,/*订单金额*/
+	user_id int not null    /*订单所属用户id*/
+)engine=myisam default charset=utf8 ;
+
+/* 创建存储过程 */
+create procedure batch_orders(in max int)
+begin
+declare start int default 0;
+declare i int default 0;
+set autocommit = 0;  
+while i < max do
+   set i = i + 1;
+   insert into orders(order_no,title,goods_num,money,user_id) 
+   values (concat('NCS-',floor(1 + rand()*1000000000000 )),concat('订单title-',i),i%50,(100.0000+(i%50)),i%10);
+end while;
+commit;
+end 
+```
+
+
+* ***call batch_orders(10000000);*** 
+
+    > ***在mysql中在执行这个存储过程，会自动插入数据***
+
+* 上面的sql中 订单表中(orders)存在user_id，而又有用户表(users)，所以我们用orders表中user_id和user表中的id来in和exists。
