@@ -147,3 +147,45 @@ end
     > ***在mysql中在执行这个存储过程，会自动插入数据***
 
 * 上面的sql中 订单表中(orders)存在user_id，而又有用户表(users)，所以我们用orders表中user_id和user表中的id来in和exists。
+
+### 对比结果
+
+1. where后面是小表
+
+    （1）select count(1) from orders o where o.user_id in(select u.id from users u);	![avatar](../doc/mysql/mysql5/11.jpg)
+
+    （2）select count(1) from orders o where exists (select 1 from users u where u.id = o.user_id);	![avatar](../doc/mysql/mysql5/12.jpg)
+
+2. where后面是大表
+
+    （1）select count(1) from users u where u.id in (select o.user_id from orders o);![avatar](../doc/mysql/mysql5/13.jpg)
+
+    （2）select count(1) from users u where exists (select 1 from orders o where o.user_id = u.id);![avatar](../doc/mysql/mysql5/14.jpg)
+
+### 分析
+
+* 我们用下面的这两条语句分析：
+
+```mysql
+select count(1) from orders o where o.user_id in(select u.id from users u);
+select count(1) from orders o where exists (select 1 from users u where u.id = o.user_id);
+```
+
+> 1. **in：先查询in后面的users表，然后再去orders中过滤，也就是先执行子查询，结果出来后，再遍历主查询，遍历主查询是根据user_id和id相等查询的。**
+>
+>     >  **即查询users表相当于外层循环，主查询就是外层循环**
+>
+> **小结：in先执行子查询，也就是<font color=red>in()</font>所包含的语句。子查询查询出数据以后，将前面的查询分为n次普通查询(n表示在子查询中返回的数据行数)**
+>
+> 2. **exists：主查询是内层循环，先查询出orders，查询orders就是外层循环，然后会判断是不是存在order_id和 users表中的id相等，相等才保留数据，查询users表就是内层循环**
+>
+>     > **这里所说的外层循环和内层循环就是我们所说的嵌套循环，而嵌套循环应该遵循“外小内大”的原则，这就好比你复制很多个小文件和复制几个大文件的区别**
+>
+> **小结：如果子查询查到数据，就返回布尔值true；如果没有，就返回布尔值false。返回布尔值true则将该条数据保存下来，否则就舍弃掉。也就是说exists查询，是查询出一条数据就执行一次子查询**
+
+### 结论
+
+* <font color=red>***小表驱动大表。***</font>
+
+* <font color=red>***in适合于外表大而内表小的情况，exists适合于外表小而内表大的情况。***</font>
+
